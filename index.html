@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>International Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --bg: #eceff2;
+  --panel: #ffffff;
+  --ink: #16212b;
+  --muted: #5d6b78;
+  --line: #d9dfe5;
+  --head: #f3f5f7;
+  --accent: #0d6c6c;
+  --accent-soft: #d6ebe9;
+  --pending: #b7791f;
+  --pending-soft: #f6e8cd;
+  --lost: #a8402f;
+  --track: #dfe5ea;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --panel: #18212a; --ink: #e8edf1; --muted: #93a1ad; --line: #2a3641;
+    --head: #1e2a34; --accent: #4bb8b0; --accent-soft: #17363a; --pending: #e0a94a;
+    --pending-soft: #3a2f18; --lost: #e07b6a; --track: #2a3641;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --panel: #18212a; --ink: #e8edf1; --muted: #93a1ad; --line: #2a3641;
+  --head: #1e2a34; --accent: #4bb8b0; --accent-soft: #17363a; --pending: #e0a94a;
+  --pending-soft: #3a2f18; --lost: #e07b6a; --track: #2a3641;
+}
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px; line-height: 1.45;
+}
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 48px; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; }
+h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin-top: 2px; }
+.filters { display: flex; gap: 10px; flex-wrap: wrap; }
+.filters label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 3px; }
+select {
+  font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 28px 7px 10px; min-width: 120px;
+}
+select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* layout */
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); }
+.hero { grid-column: span 8; }
+.kpis { grid-column: span 4; display: grid; gap: 16px; grid-template-rows: repeat(3, 1fr); }
+.half { grid-column: span 6; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; min-width: 0; }
+.panel h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
+.panel h2 small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+
+/* new business bar */
+.hero { display: flex; flex-direction: column; justify-content: space-between; }
+.hero-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.big { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.hero-figures { display: flex; gap: 36px; flex-wrap: wrap; margin: 6px 0 26px; }
+.hero-figures span { display: block; color: var(--muted); font-size: 12px; }
+.bar { position: relative; height: 16px; background: var(--track); border-radius: 8px; margin: 26px 0 8px; }
+.bar-fill { position: absolute; inset: 0 auto 0 0; width: var(--pct, 0%); background: var(--accent); border-radius: 8px; min-width: 0; }
+.bar-marker { position: absolute; left: var(--pct, 0%); top: -22px; transform: translateX(-50%); font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--accent); }
+.bar-marker::after { content: ""; position: absolute; left: 50%; top: 18px; width: 2px; height: 22px; background: var(--accent); transform: translateX(-50%); }
+.bar-ends { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+
+/* side KPIs */
+.kpi { display: flex; flex-direction: column; justify-content: center; border-left: 4px solid var(--accent); }
+.kpi.pending { border-left-color: var(--pending); }
+.kpi .label { color: var(--muted); font-size: 13px; }
+.kpi .value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.kpi .note { color: var(--muted); font-size: 12px; }
+
+/* tables */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { background: var(--head); font-weight: 600; font-size: 12.5px; color: var(--muted); }
+tbody th { font-weight: 500; }
+tfoot td, tfoot th { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--line); }
+td.empty { color: var(--muted); }
+.lostc { color: var(--lost); }
+.tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; }
+.hint { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .hero, .kpis, .half { grid-column: 1 / -1; }
+  .kpis { grid-template-columns: repeat(3, 1fr); grid-template-rows: auto; }
+}
+@media (max-width: 600px) {
+  .kpis { grid-template-columns: 1fr; }
+  h1 { font-size: 22px; }
+  .big { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>International Dashboard</h1>
+      <div class="sub">New business, renewals and channel partners outside India <span id="status">loading...</span></div>
+    </div>
+    <div class="filters">
+      <label>Quarter
+        <select id="quarter"></select>
+      </label>
+      <label>Region
+        <select id="region"><option value="__all__">All regions</option></select>
+      </label>
+      <label>Channel partner
+        <select id="partner"><option value="__all__">All partners</option></select>
+      </label>
+      <label>&nbsp;
+        <button id="refresh" type="button">Refresh</button>
+      </label>
+    </div>
+  </header>
+
+  <main class="grid">
+
+    <!-- 1. New business: achieved vs target -->
+    <section class="panel hero" aria-labelledby="nb">
+      <div>
+        <div class="hero-head"><h2 id="nb">New business</h2></div>
+        <div class="hero-figures">
+          <div><span>Achieved</span><div class="big" data-k="nb.achieved">—</div></div>
+          <div><span>Target</span><div class="big" data-k="nb.target">—</div></div>
+          <div><span>Achievement</span><div class="big" data-k="nb.pct">—</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="bar" role="progressbar" aria-label="New business achieved against target" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="nbBar">
+          <div class="bar-fill"></div>
+          <div class="bar-marker">Achieved</div>
+        </div>
+        <div class="bar-ends"><span>0</span><span>Target</span></div>
+      </div>
+    </section>
+
+    <!-- 2. Side KPIs -->
+    <div class="kpis">
+      <section class="panel kpi">
+        <div class="label">Order (New + Renewal)</div>
+        <div class="value" data-k="orders.total">—</div>
+        <div class="note">New <span data-k="orders.new">—</span> · Renewal <span data-k="orders.renewal">—</span></div>
+      </section>
+      <section class="panel kpi">
+        <div class="label">Payment received</div>
+        <div class="value" data-k="payment.received">—</div>
+        <div class="note" data-k="payment.note">&nbsp;</div>
+      </section>
+      <section class="panel kpi pending">
+        <div class="label">Pending</div>
+        <div class="value" data-k="payment.pending">—</div>
+        <div class="note" data-k="pending.note">&nbsp;</div>
+      </section>
+    </div>
+
+    <!-- 3. Region wise revenue -->
+    <section class="panel half" aria-labelledby="rr">
+      <h2 id="rr">Region wise revenue</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Region</th><th>No. of accounts</th><th>Amount</th></tr></thead>
+          <tbody data-table="regionRevenue">
+            <tr><th scope="row">GCC</th><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">LA</th><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">SEA</th><td class="empty">—</td><td class="empty">—</td></tr>
+          </tbody>
+          <tfoot><tr><th scope="row">Total</th><td>—</td><td>—</td></tr></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <!-- 4. Channel partner (Nexolib) -->
+    <section class="panel half" aria-labelledby="cp">
+      <h2 id="cp">Channel partner</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Partner</th><th>Amount</th><th>Accounts</th></tr></thead>
+          <tbody data-table="channelPartner">
+            <tr><th scope="row">Nexolib</th><td class="empty">—</td><td class="empty">—</td></tr>
+          </tbody>
+          <tfoot><tr><th scope="row">Total</th><td>—</td><td>—</td></tr></tfoot>
+        </table>
+      </div>
+      <p class="hint">More partners appear here as rows once the data is connected.</p>
+    </section>
+
+    <!-- 5. Renewal summary by quarter -->
+    <section class="panel half" aria-labelledby="rs">
+      <h2 id="rs">Renewal summary</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Quarter</th><th>Base</th><th>Achieved</th><th>Lost</th></tr></thead>
+          <tbody data-table="renewalQuarter">
+            <tr><th scope="row">Q1</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">Q2</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">Q3</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">Q4</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+          </tbody>
+          <tfoot><tr><th scope="row">Total</th><td>—</td><td>—</td><td class="lostc">—</td></tr></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <!-- 6. Region wise renewal summary -->
+    <section class="panel half" aria-labelledby="rrs">
+      <h2 id="rrs">Region wise renewal summary</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Region</th><th>Base</th><th>Achieved</th><th>Lost</th></tr></thead>
+          <tbody data-table="renewalRegion">
+            <tr><th scope="row">GCC</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">LA</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">SEA</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+          </tbody>
+          <tfoot><tr><th scope="row">Total</th><td>—</td><td>—</td><td class="lostc">—</td></tr></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <!-- 7. Product wise summary -->
+    <section class="panel half" aria-labelledby="ps">
+      <h2 id="ps">Product wise summary</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Product</th><th>New accounts</th><th>New amount</th><th>Renewal amount</th></tr></thead>
+          <tbody data-table="product">
+            <tr><th scope="row">Product 1</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">Product 2</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+            <tr><th scope="row">Product 3</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+          </tbody>
+          <tfoot><tr><th scope="row">Total</th><td>—</td><td>—</td><td>—</td></tr></tfoot>
+        </table>
+      </div>
+      <p class="hint">Product names and columns to be confirmed.</p>
+    </section>
+
+    <!-- 8. Channel partner summary -->
+    <section class="panel half" aria-labelledby="cps">
+      <h2 id="cps">Channel partner summary</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Partner</th><th>New</th><th>Renewal</th><th>Received</th><th>Pending</th></tr></thead>
+          <tbody data-table="partnerSummary">
+            <tr><th scope="row">Nexolib</th><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td><td class="empty">—</td></tr>
+          </tbody>
+          <tfoot><tr><th scope="row">Total</th><td>—</td><td>—</td><td>—</td><td>—</td></tr></tfoot>
+        </table>
+      </div>
+      <p class="hint">Columns to be confirmed.</p>
+    </section>
+
+  </main>
+
+  <p class="hint" id="footnote">&nbsp;</p>
+</div>
+
+<script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+<script>
+
+/* =========================================================
+   CONFIGURATION
+   ========================================================= */
+
+var WIDGET_VERSION = "intl v1";
+
+var FY_START_YEAR = 2026;
+var FY_FILTER = FY_START_YEAR + "-" + (FY_START_YEAR + 1);     // Deal Year (Year2)
+
+/* Accounts whose Billing Region is one of these are the international book */
+var INTERNATIONAL_REGION_VALUES = ["international"];
+var USD_TO_INR = 88;                 // international amounts are held in USD
+
+/* New business targets, in lakh */
+var NEW_TARGET = { fy: 250, q: { Q1: 15, Q2: 50, Q3: 80, Q4: 105 } };
+
+var DEAL_TYPE_NEW = ["New", "New Business"];
+var DEAL_TYPE_RENEWAL = ["Renewal", "Renewals", "Existing Business"];
+
+/* Field API names. "" = auto-detect */
+var FIELDS = {
+    amount: "",            // Deals: Expected Business
+    paymentAmount: "",     // Deals: Payment Received Amount
+    expectedOrderDate: "", // Deals: Expected Order Date
+    actualOrderDate: "",   // Deals: Actual Order Date
+    paymentDate: "",       // Deals: Payment Receiving Date
+    closingDate: "",       // Deals: Closing Date
+    year: "",              // Deals: Year2
+    dealType: "",          // Deals: Type
+    product: "",           // Deals: Product
+    billingRegion: "",     // Accounts: Billing Region
+    region: "",            // Accounts: the GCC / LA / SEA field
+    partner: ""            // Accounts: Channel Partner
+};
+
+var CLOSED_WON_STAGES = ["Email Confirmation", "PI Sent - Order Received", "Payment Received",
+                         "Part Payment Received", "Short Payment", "Closed Won"];
+var CLOSED_LOST_STAGES = ["Closed Lost", "Approval for Close Lost"];
+var PAYMENT_RECEIVED_STAGES = ["Payment Received", "Part Payment Received", "Short Payment"];
+var PAYMENT_PENDING_STAGES = ["Email Confirmation", "PI Sent - Order Received"];
+var REMOVED_STAGES = ["Renewal Notice Sent", "Renewal Notice to be Sent"];
+var EXCLUDED_DEAL_NAME_WORDS = ["test", "trigya"];
+
+/* =========================================================
+   CONSTANTS / STATE
+   ========================================================= */
+
+var QUARTERS = ["Q1", "Q2", "Q3", "Q4"];
+var ALL_QUARTERS = "All Quarters";
+var ALL_VALUE = "__all__";
+var FY_LABEL = "FY " + FY_START_YEAR + "-" + String(FY_START_YEAR + 1).slice(2);
+var FY_START = new Date(FY_START_YEAR, 3, 1, 0, 0, 0, 0);
+var FY_END = new Date(FY_START_YEAR + 1, 2, 31, 23, 59, 59, 999);
+var QUARTER_RANGE = {
+    Q1: "1 Apr - 30 Jun " + FY_START_YEAR, Q2: "1 Jul - 30 Sep " + FY_START_YEAR,
+    Q3: "1 Oct - 31 Dec " + FY_START_YEAR, Q4: "1 Jan - 31 Mar " + (FY_START_YEAR + 1)
+};
+
+var fieldInfo = null;
+var live = null;
+var amountUnit = "rupees";
+var paymentUnit = "rupees";
+
+ZOHO.embeddedApp.on("PageLoad", function() { boot(); });
+ZOHO.embeddedApp.init();
+
+document.getElementById("refresh").onclick = function() { boot(true); };
+["quarter", "region", "partner"].forEach(function(id) {
+    document.getElementById(id).onchange = function() { render(); };
+});
+
+function boot(reload) {
+    setStatus("loading Deals and Accounts...");
+    populateQuarterFilter();
+    if (reload) live = null;
+    loadLiveData()
+        .then(function() {
+            populateValueFilters();
+            render();
+            setStatus("");
+        })
+        .catch(function(err) {
+            console.error(err);
+            setStatus("could not load data from Zoho CRM");
+        });
+}
+
+function setStatus(text) {
+    document.getElementById("status").textContent = text ? "- " + text : "- " + FY_LABEL;
+}
+
+function populateQuarterFilter() {
+    var sel = document.getElementById("quarter");
+    if (sel.options.length) return;
+    var html = '<option value="' + ALL_QUARTERS + '">' + FY_LABEL + " (full year)</option>";
+    QUARTERS.forEach(function(q) { html += '<option value="' + q + '">' + q + " (" + QUARTER_RANGE[q] + ")</option>"; });
+    sel.innerHTML = html;
+}
+
+function populateValueFilters() {
+    fillSelect("region", live.regionValues, "All regions");
+    fillSelect("partner", live.partnerValues, "All partners");
+}
+
+function fillSelect(id, values, allLabel) {
+    var sel = document.getElementById(id);
+    var previous = sel.value;
+    var html = '<option value="' + ALL_VALUE + '">' + allLabel + "</option>";
+    values.forEach(function(v) { html += '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + "</option>"; });
+    sel.innerHTML = html;
+    sel.value = values.indexOf(previous) !== -1 ? previous : ALL_VALUE;
+}
+
+/* =========================================================
+   ZOHO DATA
+   ========================================================= */
+
+function zohoAll(module) {
+    return new Promise(function(resolve) {
+        var all = [], page = 1;
+        function next() {
+            ZOHO.CRM.API.getAllRecords({ Entity: module, sort_order: "asc", page: page, per_page: 200 })
+                .then(function(r) {
+                    if (r && r.data) all = all.concat(r.data);
+                    if (r && r.info && r.info.more_records === true && page < 150) { page++; next(); }
+                    else resolve(all);
+                })
+                .catch(function(e) { console.error(module + " stopped on page " + page, e); resolve(all); });
+        }
+        next();
+    });
+}
+
+function fieldsSafe(entity) {
+    try {
+        if (!ZOHO.CRM.META || !ZOHO.CRM.META.getFields) return Promise.resolve([]);
+        return ZOHO.CRM.META.getFields({ Entity: entity })
+            .then(function(r) { var f = r && (r.fields || r.data); return Array.isArray(f) ? f : []; })
+            .catch(function() { return []; });
+    } catch (e) { return Promise.resolve([]); }
+}
+
+function loadLiveData() {
+    if (live) return Promise.resolve(live);
+    return Promise.all([fieldsSafe("Deals"), fieldsSafe("Accounts"), zohoAll("Deals"), zohoAll("Accounts")])
+        .then(function(res) { live = build(res[0], res[1], res[2] || [], res[3] || []); return live; });
+}
+
+/* ---- field detection ---- */
+
+function valueList(v) {
+    if (v === undefined || v === null || v === "") return [];
+    if (Array.isArray(v)) { var o = []; v.forEach(function(x) { o = o.concat(valueList(x)); }); return o; }
+    if (typeof v === "object") {
+        var t = v.name || v.display_value || v.value || v.full_name || "";
+        return String(t).trim() ? [String(t).trim()] : [];
+    }
+    var s = String(v).trim();
+    return s ? [s] : [];
+}
+
+function valueText(v) { return valueList(v).join(", "); }
+
+function num(v) {
+    if (v && typeof v === "object") v = v.value !== undefined ? v.value : v.amount;
+    if (v === undefined || v === null || v === "" || typeof v === "boolean") return 0;
+    var n = Number(String(v).replace(/,/g, "").replace(/[₹$\s]|Rs\.?|INR|USD/gi, ""));
+    return isNaN(n) ? 0 : n;
+}
+
+function options(meta, records) {
+    var out = [], seen = {};
+    (meta || []).forEach(function(f) {
+        if (!f || !f.api_name || seen[f.api_name]) return;
+        seen[f.api_name] = true;
+        out.push({ api: f.api_name, label: f.field_label || f.api_name, type: String(f.data_type || "").toLowerCase() });
+    });
+    (records || []).slice(0, 300).forEach(function(r) {
+        Object.keys(r || {}).forEach(function(k) {
+            if (seen[k]) return; seen[k] = true; out.push({ api: k, label: k, type: "" });
+        });
+    });
+    return out;
+}
+
+function optionText(o) { return (o.label + " " + o.api.replace(/_/g, " ")).toLowerCase(); }
+
+function pick(explicit, opts, patterns, records, scorer, fallback) {
+    if (explicit) return { api: explicit, label: explicit, found: true };
+    for (var t = 0; t < patterns.length; t++) {
+        var best = null, bestScore = 0;
+        opts.forEach(function(o) {
+            if (!patterns[t].test(optionText(o))) return;
+            var s = scorer(o.api, records);
+            if (s > bestScore) { best = o; bestScore = s; }
+        });
+        if (best) return { api: best.api, label: best.label, found: true };
+    }
+    for (var i = 0; i < opts.length; i++) {
+        if (patterns[0].test(optionText(opts[i]))) return { api: opts[i].api, label: opts[i].label, found: true };
+    }
+    return { api: fallback, label: fallback, found: false };
+}
+
+function filled(api, records) { var n = 0; records.forEach(function(r) { if (valueList(r[api]).length) n++; }); return n; }
+function nonZero(api, records) { var n = 0; records.forEach(function(r) { if (num(r[api]) !== 0) n++; }); return n; }
+
+function build(dealMeta, accMeta, deals, accounts) {
+
+    var dOpts = options(dealMeta, deals), aOpts = options(accMeta, accounts);
+
+    fieldInfo = {
+        amount: pick(FIELDS.amount, dOpts, [/expected ?business/, /amount/], deals, nonZero, "Amount"),
+        paymentAmount: pick(FIELDS.paymentAmount, dOpts, [/payment receiv(ed|ing) amount/, /payment.*amount/], deals, nonZero, "Payment_Received_Amount"),
+        expectedOrderDate: pick(FIELDS.expectedOrderDate, dOpts, [/expected order date/, /expected.*order/], deals, filled, "Expected_Order_Date"),
+        actualOrderDate: pick(FIELDS.actualOrderDate, dOpts, [/actual order date/, /actual.*order/], deals, filled, "Actual_Order_Date"),
+        paymentDate: pick(FIELDS.paymentDate, dOpts, [/payment receiv(ing|ed) date/, /payment.*date/], deals, filled, "Payment_Receiving_Date"),
+        closingDate: FIELDS.closingDate ? { api: FIELDS.closingDate, label: FIELDS.closingDate, found: true }
+                                        : { api: "Closing_Date", label: "Closing Date", found: true },
+        year: pick(FIELDS.year, dOpts, [/^year2$/, /deal year/, /\byear\b/], deals, filled, "Year2"),
+        dealType: pick(FIELDS.dealType, dOpts, [/deal ?type/, /^type$/, /\btype\b/], deals, filled, "Type"),
+        product: pick(FIELDS.product, dOpts, [/\bproducts?\b/], deals, filled, "Product"),
+        billingRegion: pick(FIELDS.billingRegion, aOpts, [/billing region/, /\bregion\b/], accounts, filled, "Billing_Region"),
+        partner: pick(FIELDS.partner, aOpts, [/channel partner/, /\bpartner\b/], accounts, filled, "Channel_Partner")
+    };
+
+    function isIntl(a) {
+        var v = valueText(a[fieldInfo.billingRegion.api]).trim().toLowerCase();
+        return INTERNATIONAL_REGION_VALUES.some(function(x) { return v === String(x).trim().toLowerCase(); });
+    }
+
+    var intlAccounts = accounts.filter(isIntl);
+
+    // the GCC / LA / SEA field: a region-like field that varies across the international accounts
+    fieldInfo.region = FIELDS.region ? { api: FIELDS.region, label: FIELDS.region, found: true }
+        : pick("", aOpts, [/sub ?region/, /\bregion\b/, /billing country/, /\bcountry\b/], intlAccounts,
+               function(api, recs) {
+                   var vals = {};
+                   recs.forEach(function(r) { valueList(r[api]).forEach(function(v) { vals[v.toLowerCase()] = 1; }); });
+                   var keys = Object.keys(vals);
+                   if (keys.length < 2) return 0;                       // all the same value - useless as a filter
+                   return filled(api, recs) + keys.length;
+               }, "Billing_Region");
+
+    amountUnit = unitFor(fieldInfo.amount.api, deals);
+    paymentUnit = unitFor(fieldInfo.paymentAmount.api, deals);
+
+    var accountsById = {}, regions = {}, partners = {};
+    intlAccounts.forEach(function(a) {
+        var region = valueText(a[fieldInfo.region.api]) || "(no region)";
+        var partner = valueText(a[fieldInfo.partner.api]) || "(no partner)";
+        accountsById[String(a.id)] = {
+            id: String(a.id), name: a.Account_Name || "(Unnamed Account)",
+            region: region, partner: partner,
+            owner: lookupName(a.Owner, "Unassigned")
+        };
+        if (region !== "(no region)") regions[region] = 1;
+        if (partner !== "(no partner)") partners[partner] = 1;
+    });
+
+    var sortFn = function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); };
+
+    return {
+        deals: deals, accountsById: accountsById,
+        accountCount: intlAccounts.length, totalAccounts: accounts.length,
+        regionValues: Object.keys(regions).sort(sortFn),
+        partnerValues: Object.keys(partners).sort(sortFn)
+    };
+}
+
+function unitFor(api, deals) {
+    var vals = [];
+    deals.forEach(function(d) { var v = Math.abs(num(d[api])); if (v) vals.push(v); });
+    if (!vals.length) return "rupees";
+    vals.sort(function(a, b) { return a - b; });
+    return vals[Math.floor(vals.length / 2)] < 1000 ? "lakh" : "rupees";
+}
+
+/* =========================================================
+   DEAL RULES
+   ========================================================= */
+
+function normStage(s) { return String(s || "").trim().toLowerCase().replace(/\s+/g, " "); }
+function inList(stage, list) { return list.map(normStage).indexOf(normStage(stage)) !== -1; }
+function isWon(stage) { return inList(stage, CLOSED_WON_STAGES); }
+function isLost(stage) { return inList(stage, CLOSED_LOST_STAGES); }
+function isRemoved(stage) { return inList(stage, REMOVED_STAGES); }
+function isOpen(stage) { return !isWon(stage) && !isLost(stage) && !isRemoved(stage) && !inList(stage, PAYMENT_PENDING_STAGES); }
+
+function lookupId(v) { return v && typeof v === "object" ? String(v.id || "") : String(v || ""); }
+function lookupName(v, fb) { return v && typeof v === "object" ? (v.name || fb) : fb; }
+
+function parseDate(v) {
+    if (!v) return null;
+    var s = String(v).trim(), m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    var d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function quarterOf(value) {
+    var d = parseDate(valueText(value));
+    if (!d || d < FY_START || d > FY_END) return null;
+    var mo = d.getMonth() + 1;
+    return mo >= 4 && mo <= 6 ? "Q1" : mo >= 7 && mo <= 9 ? "Q2" : mo >= 10 ? "Q3" : "Q4";
+}
+
+function fiscalYear(deal) {
+    var v = valueText(deal[fieldInfo.year.api]).replace(/^FY\s*/i, "").replace(/\s+/g, "");
+    if (v) {
+        var full = v.match(/^(\d{4})[-\/](\d{4})$/); if (full) return full[1] + "-" + full[2];
+        var sh = v.match(/^(\d{4})[-\/](\d{2})$/); if (sh) return sh[1] + "-" + (Number(sh[1]) + 1);
+        return v;
+    }
+    var d = parseDate(valueText(deal[fieldInfo.expectedOrderDate.api]));
+    if (!d) return "";
+    var y = d.getFullYear();
+    return d.getMonth() >= 3 ? y + "-" + (y + 1) : (y - 1) + "-" + y;
+}
+
+function amountLakh(deal, account) {
+    var raw = num(deal[fieldInfo.amount.api]);
+    var lakh = amountUnit === "lakh" ? raw : raw / 100000;
+    return lakh * (account ? USD_TO_INR : 1);
+}
+
+function paymentLakh(deal, account) {
+    var raw = num(deal[fieldInfo.paymentAmount.api]);
+    var lakh = paymentUnit === "lakh" ? raw : raw / 100000;
+    return lakh * (account ? USD_TO_INR : 1);
+}
+
+function dealKind(deal) {
+    var v = valueList(deal[fieldInfo.dealType.api]).map(function(x) { return x.trim().toLowerCase(); });
+    var lower = function(list) { return list.map(function(t) { return String(t).trim().toLowerCase(); }); };
+    if (v.some(function(x) { return lower(DEAL_TYPE_NEW).indexOf(x) !== -1; })) return "New";
+    if (v.some(function(x) { return lower(DEAL_TYPE_RENEWAL).indexOf(x) !== -1; })) return "Renewal";
+    return v.length ? "Other" : "Blank";
+}
+
+/* one row per international deal of this FY, with everything the panels need */
+function dealRows(quarter, region, partner) {
+    var rows = [];
+    live.deals.forEach(function(deal) {
+        if (fiscalYear(deal) !== FY_FILTER) return;
+        var acc = live.accountsById[lookupId(deal.Account_Name)];
+        if (!acc) return;                                     // not an international account
+        if (region !== ALL_VALUE && acc.region !== region) return;
+        if (partner !== ALL_VALUE && acc.partner !== partner) return;
+        if (isRemoved(deal.Stage)) return;
+
+        var q = {
+            expected: quarterOf(deal[fieldInfo.expectedOrderDate.api]),
+            actual: quarterOf(deal[fieldInfo.actualOrderDate.api]),
+            payment: quarterOf(deal[fieldInfo.paymentDate.api]),
+            closing: quarterOf(deal[fieldInfo.closingDate.api])
+        };
+        var name = String(deal.Deal_Name || "").toLowerCase();
+        rows.push({
+            account: acc, kind: dealKind(deal), stage: String(deal.Stage || "").trim() || "Unknown",
+            amount: amountLakh(deal, acc), payment: paymentLakh(deal, acc), q: q,
+            product: valueText(deal[fieldInfo.product.api]) || "(no product)",
+            excluded: EXCLUDED_DEAL_NAME_WORDS.some(function(w) { return name.indexOf(w) !== -1; })
+        });
+    });
+    var all = quarter === ALL_QUARTERS;
+    function keep(qv) { return !!qv && (all || qv === quarter); }
+    rows.forEach(function(r) {
+        r.wonHere = isWon(r.stage) && !r.excluded && keep(r.q.actual);
+        r.lostHere = isLost(r.stage) && keep(r.q.closing);
+        r.paidHere = inList(r.stage, PAYMENT_RECEIVED_STAGES) && !r.excluded && keep(r.q.payment);
+        r.pendingHere = inList(r.stage, PAYMENT_PENDING_STAGES) && keep(r.q.closing);
+        r.baseHere = keep(r.q.expected);                      // renewal base / open book
+    });
+    return rows;
+}
+
+/* =========================================================
+   RENDER
+   ========================================================= */
+
+function lakh(v) { return (Number(v) || 0).toFixed(2) + " L"; }
+function pct(a, b) { return b ? Math.round((a / b) * 100) + "%" : "-"; }
+function escapeHtml(v) {
+    return String(v === undefined || v === null ? "" : v)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function setValues(map) {
+    document.querySelectorAll("[data-k]").forEach(function(el) {
+        var v = map[el.getAttribute("data-k")];
+        if (v !== undefined) el.textContent = v;
+    });
+}
+
+function fillTable(key, rows, totals) {
+    var tbody = document.querySelector('[data-table="' + key + '"]');
+    if (!tbody) return;
+    if (!rows.length) {
+        var cols = tbody.previousElementSibling.rows[0].cells.length;
+        tbody.innerHTML = '<tr><td class="empty" colspan="' + cols + '">No data for these filters</td></tr>';
+    } else {
+        tbody.innerHTML = rows.map(function(r) {
+            return "<tr><th scope=\"row\">" + escapeHtml(r[0]) + "</th>" +
+                r.slice(1).map(function(c, i) {
+                    var cls = (key.indexOf("renewal") === 0 && i === r.length - 2) ? ' class="lostc"' : "";
+                    return "<td" + cls + ">" + escapeHtml(c) + "</td>";
+                }).join("") + "</tr>";
+        }).join("");
+    }
+    var tfoot = tbody.parentNode.tFoot;
+    if (tfoot && totals) {
+        var cells = tfoot.rows[0].cells;
+        for (var i = 1; i < cells.length; i++) cells[i].textContent = totals[i - 1] === undefined ? "-" : totals[i - 1];
+    }
+}
+
+function groupSum(rows, keyFn, pickFn) {
+    var out = {};
+    rows.forEach(function(r) {
+        var k = keyFn(r);
+        var bucket = out[k] || (out[k] = { amount: 0, accounts: {}, extra: 0, lost: 0, base: 0, paid: 0, pending: 0 });
+        pickFn(bucket, r);
+    });
+    return out;
+}
+
+function render() {
+    if (!live) return;
+
+    var quarter = document.getElementById("quarter").value || ALL_QUARTERS;
+    var region = document.getElementById("region").value || ALL_VALUE;
+    var partner = document.getElementById("partner").value || ALL_VALUE;
+    var rows = dealRows(quarter, region, partner);
+
+    var target = quarter === ALL_QUARTERS ? NEW_TARGET.fy : (NEW_TARGET.q[quarter] || 0);
+
+    var newWon = 0, renewalWon = 0, received = 0, pending = 0, receivedCount = 0, pendingCount = 0;
+    rows.forEach(function(r) {
+        if (r.wonHere) { if (r.kind === "Renewal") renewalWon += r.amount; else newWon += r.amount; }
+        if (r.paidHere) { received += r.payment; receivedCount++; }
+        if (r.pendingHere) { pending += r.amount; pendingCount++; }
+    });
+
+    setValues({
+        "nb.achieved": lakh(newWon), "nb.target": lakh(target), "nb.pct": pct(newWon, target),
+        "orders.total": lakh(newWon + renewalWon), "orders.new": lakh(newWon), "orders.renewal": lakh(renewalWon),
+        "payment.received": lakh(received), "payment.note": receivedCount + (receivedCount === 1 ? " deal" : " deals"),
+        "payment.pending": lakh(pending), "pending.note": pendingCount + (pendingCount === 1 ? " deal" : " deals")
+    });
+
+    var bar = document.getElementById("nbBar");
+    var p = target ? Math.max(0, Math.min(100, (newWon / target) * 100)) : 0;
+    bar.style.setProperty("--pct", p.toFixed(1) + "%");
+    bar.setAttribute("aria-valuenow", Math.round(p));
+    bar.querySelector(".bar-marker").textContent = lakh(newWon);
+
+    // 3. Region wise revenue (won business)
+    var byRegion = groupSum(rows, function(r) { return r.account.region; }, function(b, r) {
+        if (r.wonHere) { b.amount += r.amount; b.accounts[r.account.id] = 1; }
+        if (r.baseHere && r.kind === "Renewal") b.base += r.amount;
+        if (r.wonHere && r.kind === "Renewal") b.extra += r.amount;
+        if (r.lostHere && r.kind === "Renewal") b.lost += r.amount;
+    });
+    var regionKeys = Object.keys(byRegion).sort();
+    fillTable("regionRevenue", regionKeys.map(function(k) {
+        return [k, String(Object.keys(byRegion[k].accounts).length), lakh(byRegion[k].amount)];
+    }), [String(regionKeys.reduce(function(s, k) { return s + Object.keys(byRegion[k].accounts).length; }, 0)),
+         lakh(regionKeys.reduce(function(s, k) { return s + byRegion[k].amount; }, 0))]);
+
+    // 4 + 8. Channel partner
+    var byPartner = groupSum(rows, function(r) { return r.account.partner; }, function(b, r) {
+        if (r.wonHere) { b.amount += r.amount; b.accounts[r.account.id] = 1; if (r.kind === "Renewal") b.extra += r.amount; else b.base += r.amount; }
+        if (r.paidHere) b.paid += r.payment;
+        if (r.pendingHere) b.pending += r.amount;
+    });
+    var pKeys = Object.keys(byPartner).sort();
+    fillTable("channelPartner", pKeys.map(function(k) {
+        return [k, lakh(byPartner[k].amount), String(Object.keys(byPartner[k].accounts).length)];
+    }), [lakh(pKeys.reduce(function(s, k) { return s + byPartner[k].amount; }, 0)),
+         String(pKeys.reduce(function(s, k) { return s + Object.keys(byPartner[k].accounts).length; }, 0))]);
+
+    fillTable("partnerSummary", pKeys.map(function(k) {
+        var b = byPartner[k];
+        return [k, lakh(b.base), lakh(b.extra), lakh(b.paid), lakh(b.pending)];
+    }), ["base", "extra", "paid", "pending"].map(function(f) {
+        return lakh(pKeys.reduce(function(s, k) { return s + byPartner[k][f]; }, 0));
+    }));
+
+    // 5. Renewal summary by quarter
+    var quarters = quarter === ALL_QUARTERS ? QUARTERS : [quarter];
+    var qRows = quarters.map(function(q) {
+        var base = 0, won = 0, lost = 0;
+        rows.forEach(function(r) {
+            if (r.kind !== "Renewal") return;
+            if (r.q.expected === q) base += r.amount;
+            if (isWon(r.stage) && !r.excluded && r.q.actual === q) won += r.amount;
+            if (isLost(r.stage) && r.q.closing === q) lost += r.amount;
+        });
+        return [q, lakh(base), lakh(won), lakh(lost)];
+    });
+    fillTable("renewalQuarter", qRows, ["base", "achieved", "lost"].map(function(_, i) {
+        return lakh(qRows.reduce(function(s, r) { return s + parseFloat(r[i + 1]); }, 0));
+    }));
+
+    // 6. Region wise renewal summary
+    fillTable("renewalRegion", regionKeys.map(function(k) {
+        var b = byRegion[k];
+        return [k, lakh(b.base), lakh(b.extra), lakh(b.lost)];
+    }), ["base", "extra", "lost"].map(function(f) {
+        return lakh(regionKeys.reduce(function(s, k) { return s + byRegion[k][f]; }, 0));
+    }));
+
+    // 7. Product wise summary
+    var byProduct = groupSum(rows, function(r) { return r.product; }, function(b, r) {
+        if (r.wonHere && r.kind !== "Renewal") { b.base += r.amount; b.accounts[r.account.id] = 1; }
+        if (r.wonHere && r.kind === "Renewal") b.extra += r.amount;
+    });
+    var prodKeys = Object.keys(byProduct).sort();
+    fillTable("product", prodKeys.map(function(k) {
+        var b = byProduct[k];
+        return [k, String(Object.keys(b.accounts).length), lakh(b.base), lakh(b.extra)];
+    }), [String(prodKeys.reduce(function(s, k) { return s + Object.keys(byProduct[k].accounts).length; }, 0)),
+         lakh(prodKeys.reduce(function(s, k) { return s + byProduct[k].base; }, 0)),
+         lakh(prodKeys.reduce(function(s, k) { return s + byProduct[k].extra; }, 0))]);
+
+    var f = fieldInfo;
+    document.getElementById("footnote").innerHTML =
+        live.accountCount + " international accounts of " + live.totalAccounts + " (Billing Region = " +
+        escapeHtml(INTERNATIONAL_REGION_VALUES.join(" / ")) + "), " + rows.length + " deals in " + FY_LABEL +
+        ". Amounts are USD x " + USD_TO_INR + " shown in lakh. New business = Closed Won, Deal Type New, Actual Order Date in the period; " +
+        "renewal base = Expected Order Date in the period. Fields: region = " + escapeHtml(f.region.api) +
+        ", partner = " + escapeHtml(f.partner.api) + ", product = " + escapeHtml(f.product.api) +
+        ", amount = " + escapeHtml(f.amount.api) + " (" + amountUnit + "), deal type = " + escapeHtml(f.dealType.api) +
+        ". " + WIDGET_VERSION;
+}
+
+</script>
+</body>
+</html>
