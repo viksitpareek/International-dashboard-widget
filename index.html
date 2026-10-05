@@ -98,6 +98,49 @@ td.empty { color: var(--muted); }
 .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; }
 .hint { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
 
+/* multi-select filters */
+.multi { position: relative; }
+.multi-btn {
+  font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 10px; min-width: 150px; text-align: left; cursor: pointer;
+}
+.multi-btn::after { content: " \25BE"; color: var(--muted); }
+.multi-menu {
+  display: none; position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 210px;
+  max-height: 280px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; box-shadow: 0 10px 24px rgba(0,0,0,0.18); padding: 6px 0;
+}
+.multi.open .multi-menu { display: block; }
+.multi-opt { display: flex; gap: 8px; align-items: center; padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--ink); }
+.multi-opt:hover { background: var(--head); }
+.multi-opt.all { border-bottom: 1px solid var(--line); font-weight: 600; }
+
+#refresh {
+  font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 14px; cursor: pointer;
+}
+#refresh:hover { border-color: var(--accent); color: var(--accent); }
+
+/* clickable figures */
+.drill { cursor: pointer; border-bottom: 1px dotted var(--accent); }
+.drill:hover { color: var(--accent); }
+td.zero, tbody tr.zero th { color: var(--muted); }
+.count-note { color: var(--muted); font-weight: 400; }
+
+/* drill-down dialog */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(8,12,16,0.5); z-index: 90; }
+.overlay.open { display: block; }
+.dialog {
+  position: absolute; left: 50%; transform: translateX(-50%); width: min(880px, 94%); max-height: 70vh;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+}
+.dialog-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.dialog-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.dialog-close { background: none; border: 0; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; }
+.dialog-body { padding: 12px 18px 18px; overflow: auto; }
+.dialog-body .sum { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+
 @media (max-width: 900px) {
   .hero, .kpis, .half { grid-column: 1 / -1; }
   .kpis { grid-template-columns: repeat(3, 1fr); grid-template-rows: auto; }
@@ -122,10 +165,16 @@ td.empty { color: var(--muted); }
         <select id="quarter"></select>
       </label>
       <label>Region
-        <select id="region"><option value="__all__">All regions</option></select>
+        <div class="multi" id="regionMulti">
+          <button type="button" class="multi-btn" id="regionBtn">All regions</button>
+          <div class="multi-menu" id="regionMenu"></div>
+        </div>
       </label>
       <label>Channel partner
-        <select id="partner"><option value="__all__">All partners</option></select>
+        <div class="multi" id="partnerMulti">
+          <button type="button" class="multi-btn" id="partnerBtn">All partners</button>
+          <div class="multi-menu" id="partnerMenu"></div>
+        </div>
       </label>
       <label>&nbsp;
         <button id="refresh" type="button">Refresh</button>
@@ -274,6 +323,16 @@ td.empty { color: var(--muted); }
   <p class="hint" id="footnote">&nbsp;</p>
 </div>
 
+<div class="overlay" id="drillOverlay">
+  <div class="dialog" id="drillBox">
+    <div class="dialog-head">
+      <h3 id="drillTitle">Accounts</h3>
+      <button type="button" class="dialog-close" id="drillClose">&times;</button>
+    </div>
+    <div class="dialog-body" id="drillBody"></div>
+  </div>
+</div>
+
 <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
 <script>
 
@@ -281,14 +340,14 @@ td.empty { color: var(--muted); }
    CONFIGURATION
    ========================================================= */
 
-var WIDGET_VERSION = "intl v1";
+var WIDGET_VERSION = "intl v2 - multi-select filters, account drill-down, USD x 95";
 
 var FY_START_YEAR = 2026;
 var FY_FILTER = FY_START_YEAR + "-" + (FY_START_YEAR + 1);     // Deal Year (Year2)
 
 /* Accounts whose Billing Region is one of these are the international book */
 var INTERNATIONAL_REGION_VALUES = ["international"];
-var USD_TO_INR = 88;                 // international amounts are held in USD
+var USD_TO_INR = 95;                 // international amounts are held in USD
 
 /* New business targets, in lakh */
 var NEW_TARGET = { fy: 250, q: { Q1: 15, Q2: 50, Q3: 80, Q4: 105 } };
@@ -337,6 +396,11 @@ var QUARTER_RANGE = {
 
 var fieldInfo = null;
 var live = null;
+var selectedRegions = [];      // empty = all
+var selectedPartners = [];     // empty = all
+var drillStore = {};
+var drillSeq = 0;
+var lastClickY = 0;
 var amountUnit = "rupees";
 var paymentUnit = "rupees";
 
@@ -344,9 +408,27 @@ ZOHO.embeddedApp.on("PageLoad", function() { boot(); });
 ZOHO.embeddedApp.init();
 
 document.getElementById("refresh").onclick = function() { boot(true); };
-["quarter", "region", "partner"].forEach(function(id) {
-    document.getElementById(id).onchange = function() { render(); };
+document.getElementById("quarter").onchange = function() { render(); };
+document.addEventListener("click", function(e) { lastClickY = e.pageY || 0; }, true);
+
+["region", "partner"].forEach(function(id) {
+    document.getElementById(id + "Btn").onclick = function(e) {
+        e.stopPropagation();
+        document.getElementById(id + "Multi").classList.toggle("open");
+    };
 });
+
+document.addEventListener("click", function(e) {
+    ["region", "partner"].forEach(function(id) {
+        var box = document.getElementById(id + "Multi");
+        if (box && !box.contains(e.target)) box.classList.remove("open");
+    });
+    var drill = e.target.closest ? e.target.closest("[data-drill]") : null;
+    if (drill) openDrill(drill.getAttribute("data-drill"));
+});
+
+document.getElementById("drillClose").onclick = closeDrill;
+document.getElementById("drillOverlay").onclick = function(e) { if (e.target === this) closeDrill(); };
 
 function boot(reload) {
     setStatus("loading Deals and Accounts...");
@@ -377,17 +459,52 @@ function populateQuarterFilter() {
 }
 
 function populateValueFilters() {
-    fillSelect("region", live.regionValues, "All regions");
-    fillSelect("partner", live.partnerValues, "All partners");
+    buildMulti("region", live.regionValues, "All regions");
+    buildMulti("partner", live.partnerValues, "All partners");
 }
 
-function fillSelect(id, values, allLabel) {
-    var sel = document.getElementById(id);
-    var previous = sel.value;
-    var html = '<option value="' + ALL_VALUE + '">' + allLabel + "</option>";
-    values.forEach(function(v) { html += '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + "</option>"; });
-    sel.innerHTML = html;
-    sel.value = values.indexOf(previous) !== -1 ? previous : ALL_VALUE;
+function selectionFor(id) { return id === "region" ? selectedRegions : selectedPartners; }
+
+function buildMulti(id, values, allLabel) {
+
+    var menu = document.getElementById(id + "Menu");
+    var chosen = selectionFor(id).filter(function(v) { return values.indexOf(v) !== -1; });
+    if (id === "region") selectedRegions = chosen; else selectedPartners = chosen;
+
+    var html = '<label class="multi-opt all"><input type="checkbox" data-pick="' + id + '" value="' + ALL_VALUE + '"' +
+        (chosen.length === 0 ? " checked" : "") + "> " + allLabel + "</label>";
+
+    values.forEach(function(v) {
+        html += '<label class="multi-opt"><input type="checkbox" data-pick="' + id + '" value="' + escapeHtml(v) + '"' +
+            (chosen.indexOf(v) !== -1 ? " checked" : "") + "> " + escapeHtml(v) + "</label>";
+    });
+
+    menu.innerHTML = html;
+    menu.querySelectorAll("input").forEach(function(box) {
+        box.onchange = function() { onPick(id, box, values); };
+    });
+    setMultiLabel(id, values, allLabel);
+}
+
+function onPick(id, box, values) {
+    var chosen = selectionFor(id).slice();
+    if (box.value === ALL_VALUE) chosen = [];
+    else if (box.checked) { if (chosen.indexOf(box.value) === -1) chosen.push(box.value); }
+    else chosen = chosen.filter(function(v) { return v !== box.value; });
+
+    chosen = values.filter(function(v) { return chosen.indexOf(v) !== -1; });
+    if (chosen.length === values.length) chosen = [];
+
+    if (id === "region") selectedRegions = chosen; else selectedPartners = chosen;
+    buildMulti(id, values, id === "region" ? "All regions" : "All partners");
+    document.getElementById(id + "Multi").classList.add("open");
+    render();
+}
+
+function setMultiLabel(id, values, allLabel) {
+    var chosen = selectionFor(id);
+    document.getElementById(id + "Btn").textContent =
+        chosen.length === 0 ? allLabel : chosen.length <= 2 ? chosen.join(", ") : chosen.length + " selected";
 }
 
 /* =========================================================
@@ -524,7 +641,7 @@ function build(dealMeta, accMeta, deals, accounts) {
     amountUnit = unitFor(fieldInfo.amount.api, deals);
     paymentUnit = unitFor(fieldInfo.paymentAmount.api, deals);
 
-    var accountsById = {}, regions = {}, partners = {};
+    var accountsById = {}, regions = {}, partners = {}, accountsByRegion = {}, accountsByPartner = {};
     intlAccounts.forEach(function(a) {
         var region = valueText(a[fieldInfo.region.api]) || "(no region)";
         var partner = valueText(a[fieldInfo.partner.api]) || "(no partner)";
@@ -535,12 +652,15 @@ function build(dealMeta, accMeta, deals, accounts) {
         };
         if (region !== "(no region)") regions[region] = 1;
         if (partner !== "(no partner)") partners[partner] = 1;
+        (accountsByRegion[region] = accountsByRegion[region] || []).push(String(a.id));
+        (accountsByPartner[partner] = accountsByPartner[partner] || []).push(String(a.id));
     });
 
     var sortFn = function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); };
 
     return {
         deals: deals, accountsById: accountsById,
+        accountsByRegion: accountsByRegion, accountsByPartner: accountsByPartner,
         accountCount: intlAccounts.length, totalAccounts: accounts.length,
         regionValues: Object.keys(regions).sort(sortFn),
         partnerValues: Object.keys(partners).sort(sortFn)
@@ -611,21 +731,20 @@ function paymentLakh(deal, account) {
 
 function dealKind(deal) {
     var v = valueList(deal[fieldInfo.dealType.api]).map(function(x) { return x.trim().toLowerCase(); });
-    var lower = function(list) { return list.map(function(t) { return String(t).trim().toLowerCase(); }); };
-    if (v.some(function(x) { return lower(DEAL_TYPE_NEW).indexOf(x) !== -1; })) return "New";
-    if (v.some(function(x) { return lower(DEAL_TYPE_RENEWAL).indexOf(x) !== -1; })) return "Renewal";
+    if (v.some(function(x) { return DEAL_TYPE_NEW.map(String.prototype.toLowerCase.call.bind(String.prototype.toLowerCase)).indexOf(x) !== -1; })) return "New";
+    if (v.some(function(x) { return DEAL_TYPE_RENEWAL.map(function(t) { return t.toLowerCase(); }).indexOf(x) !== -1; })) return "Renewal";
     return v.length ? "Other" : "Blank";
 }
 
 /* one row per international deal of this FY, with everything the panels need */
-function dealRows(quarter, region, partner) {
+function dealRows(quarter, regions, partners) {
     var rows = [];
     live.deals.forEach(function(deal) {
         if (fiscalYear(deal) !== FY_FILTER) return;
         var acc = live.accountsById[lookupId(deal.Account_Name)];
         if (!acc) return;                                     // not an international account
-        if (region !== ALL_VALUE && acc.region !== region) return;
-        if (partner !== ALL_VALUE && acc.partner !== partner) return;
+        if (regions.length && regions.indexOf(acc.region) === -1) return;
+        if (partners.length && partners.indexOf(acc.partner) === -1) return;
         if (isRemoved(deal.Stage)) return;
 
         var q = {
@@ -636,7 +755,8 @@ function dealRows(quarter, region, partner) {
         };
         var name = String(deal.Deal_Name || "").toLowerCase();
         rows.push({
-            account: acc, kind: dealKind(deal), stage: String(deal.Stage || "").trim() || "Unknown",
+            account: acc, name: deal.Deal_Name || "(No name)", kind: dealKind(deal),
+            stage: String(deal.Stage || "").trim() || "Unknown",
             amount: amountLakh(deal, acc), payment: paymentLakh(deal, acc), q: q,
             product: valueText(deal[fieldInfo.product.api]) || "(no product)",
             excluded: EXCLUDED_DEAL_NAME_WORDS.some(function(w) { return name.indexOf(w) !== -1; })
@@ -665,153 +785,262 @@ function escapeHtml(v) {
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
+/* a figure you can click to see the accounts behind it */
+function drill(text, title, list) {
+    if (!list || !list.length) return '<span class="zero">' + text + "</span>";
+    var id = "d" + (++drillSeq);
+    drillStore[id] = { title: title, rows: list };
+    return '<span class="drill" data-drill="' + id + '">' + text + "</span>";
+}
+
+function openDrill(id) {
+    var entry = drillStore[id];
+    if (!entry) return;
+
+    var byAccount = {};
+    entry.rows.forEach(function(r) {
+        var a = byAccount[r.account.id] || (byAccount[r.account.id] = { account: r.account, amount: 0, deals: [] });
+        a.amount += r.drillAmount !== undefined ? r.drillAmount : r.amount;
+        a.deals.push(r);
+    });
+
+    var accounts = Object.keys(byAccount).map(function(k) { return byAccount[k]; })
+        .sort(function(a, b) { return b.amount - a.amount; });
+    var total = accounts.reduce(function(sum, a) { return sum + a.amount; }, 0);
+
+    var html = '<p class="sum">' + accounts.length + (accounts.length === 1 ? " account" : " accounts") + ", " +
+        entry.rows.length + (entry.rows.length === 1 ? " deal" : " deals") + ", total " + lakh(total) + "</p>";
+    html += '<div class="scroll"><table><thead><tr><th>Account</th><th>Region</th><th>Partner</th>' +
+        "<th>Deal</th><th>Type</th><th>Stage</th><th>Amount</th></tr></thead><tbody>";
+
+    accounts.forEach(function(a) {
+        a.deals.sort(function(x, y) { return (y.drillAmount || y.amount) - (x.drillAmount || x.amount); });
+        a.deals.forEach(function(r, i) {
+            html += "<tr><th scope=\"row\">" + (i === 0 ? escapeHtml(a.account.name) : "") + "</th>" +
+                "<td>" + escapeHtml(i === 0 ? a.account.region : "") + "</td>" +
+                "<td>" + escapeHtml(i === 0 ? a.account.partner : "") + "</td>" +
+                "<td>" + escapeHtml(r.name) + "</td><td>" + escapeHtml(r.kind) + "</td>" +
+                "<td>" + escapeHtml(r.stage) + "</td><td>" + lakh(r.drillAmount !== undefined ? r.drillAmount : r.amount) + "</td></tr>";
+        });
+    });
+
+    html += "</tbody></table></div>";
+
+    document.getElementById("drillTitle").textContent = entry.title;
+    document.getElementById("drillBody").innerHTML = html;
+
+    var overlay = document.getElementById("drillOverlay");
+    var box = document.getElementById("drillBox");
+    overlay.classList.add("open");
+    var pageHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    overlay.style.height = pageHeight + "px";
+    box.style.top = Math.max(12, Math.min(lastClickY - 80, pageHeight - box.offsetHeight - 12)) + "px";
+}
+
+function closeDrill() { document.getElementById("drillOverlay").classList.remove("open"); }
+
 function setValues(map) {
     document.querySelectorAll("[data-k]").forEach(function(el) {
         var v = map[el.getAttribute("data-k")];
-        if (v !== undefined) el.textContent = v;
+        if (v !== undefined) el.innerHTML = v;
     });
 }
 
 function fillTable(key, rows, totals) {
     var tbody = document.querySelector('[data-table="' + key + '"]');
     if (!tbody) return;
+    var columns = tbody.parentNode.tHead.rows[0].cells.length;
+
     if (!rows.length) {
-        var cols = tbody.previousElementSibling.rows[0].cells.length;
-        tbody.innerHTML = '<tr><td class="empty" colspan="' + cols + '">No data for these filters</td></tr>';
+        tbody.innerHTML = '<tr><td class="empty" colspan="' + columns + '">No ' + FY_LABEL + " data for these filters</td></tr>";
     } else {
         tbody.innerHTML = rows.map(function(r) {
-            return "<tr><th scope=\"row\">" + escapeHtml(r[0]) + "</th>" +
+            var zero = r.slice(1).every(function(c) { return /^(0\.00 L|0)$/.test(String(c).replace(/<[^>]*>/g, "")); });
+            return '<tr' + (zero ? ' class="zero"' : "") + '><th scope="row">' + r[0] + "</th>" +
                 r.slice(1).map(function(c, i) {
-                    var cls = (key.indexOf("renewal") === 0 && i === r.length - 2) ? ' class="lostc"' : "";
-                    return "<td" + cls + ">" + escapeHtml(c) + "</td>";
+                    var lost = key.indexOf("renewal") === 0 && i === r.length - 2;
+                    return "<td" + (lost ? ' class="lostc"' : "") + ">" + c + "</td>";
                 }).join("") + "</tr>";
         }).join("");
     }
+
     var tfoot = tbody.parentNode.tFoot;
     if (tfoot && totals) {
         var cells = tfoot.rows[0].cells;
-        for (var i = 1; i < cells.length; i++) cells[i].textContent = totals[i - 1] === undefined ? "-" : totals[i - 1];
+        for (var i = 1; i < cells.length; i++) cells[i].innerHTML = totals[i - 1] === undefined ? "-" : totals[i - 1];
     }
 }
 
-function groupSum(rows, keyFn, pickFn) {
-    var out = {};
-    rows.forEach(function(r) {
-        var k = keyFn(r);
-        var bucket = out[k] || (out[k] = { amount: 0, accounts: {}, extra: 0, lost: 0, base: 0, paid: 0, pending: 0 });
-        pickFn(bucket, r);
+function sumOf(list, field) {
+    return list.reduce(function(s, r) { return s + (field ? r[field] : r.amount); }, 0);
+}
+
+function withAmount(list, field) {
+    return list.map(function(r) {
+        var copy = Object.create(r);
+        copy.drillAmount = field ? r[field] : r.amount;
+        return copy;
     });
-    return out;
 }
 
 function render() {
     if (!live) return;
 
+    drillStore = {};
     var quarter = document.getElementById("quarter").value || ALL_QUARTERS;
-    var region = document.getElementById("region").value || ALL_VALUE;
-    var partner = document.getElementById("partner").value || ALL_VALUE;
-    var rows = dealRows(quarter, region, partner);
-
+    var rows = dealRows(quarter, selectedRegions, selectedPartners);
+    var period = quarter === ALL_QUARTERS ? FY_LABEL : quarter + " " + FY_LABEL;
     var target = quarter === ALL_QUARTERS ? NEW_TARGET.fy : (NEW_TARGET.q[quarter] || 0);
 
-    var newWon = 0, renewalWon = 0, received = 0, pending = 0, receivedCount = 0, pendingCount = 0;
-    rows.forEach(function(r) {
-        if (r.wonHere) { if (r.kind === "Renewal") renewalWon += r.amount; else newWon += r.amount; }
-        if (r.paidHere) { received += r.payment; receivedCount++; }
-        if (r.pendingHere) { pending += r.amount; pendingCount++; }
-    });
+    var newWon = rows.filter(function(r) { return r.wonHere && r.kind !== "Renewal"; });
+    var renewalWon = rows.filter(function(r) { return r.wonHere && r.kind === "Renewal"; });
+    var paid = rows.filter(function(r) { return r.paidHere; });
+    var pendingRows = rows.filter(function(r) { return r.pendingHere; });
+
+    var newWonAmt = sumOf(newWon), renewalWonAmt = sumOf(renewalWon);
+    var paidAmt = sumOf(paid, "payment"), pendingAmt = sumOf(pendingRows);
 
     setValues({
-        "nb.achieved": lakh(newWon), "nb.target": lakh(target), "nb.pct": pct(newWon, target),
-        "orders.total": lakh(newWon + renewalWon), "orders.new": lakh(newWon), "orders.renewal": lakh(renewalWon),
-        "payment.received": lakh(received), "payment.note": receivedCount + (receivedCount === 1 ? " deal" : " deals"),
-        "payment.pending": lakh(pending), "pending.note": pendingCount + (pendingCount === 1 ? " deal" : " deals")
+        "nb.achieved": drill(lakh(newWonAmt), "New business won - " + period, newWon),
+        "nb.target": lakh(target),
+        "nb.pct": pct(newWonAmt, target),
+        "orders.total": drill(lakh(newWonAmt + renewalWonAmt), "Orders won (new + renewal) - " + period, newWon.concat(renewalWon)),
+        "orders.new": drill(lakh(newWonAmt), "New orders - " + period, newWon),
+        "orders.renewal": drill(lakh(renewalWonAmt), "Renewal orders - " + period, renewalWon),
+        "payment.received": drill(lakh(paidAmt), "Payment received - " + period, withAmount(paid, "payment")),
+        "payment.note": paid.length + (paid.length === 1 ? " deal" : " deals"),
+        "payment.pending": drill(lakh(pendingAmt), "Payment pending - " + period, pendingRows),
+        "pending.note": pendingRows.length + (pendingRows.length === 1 ? " deal" : " deals")
     });
 
     var bar = document.getElementById("nbBar");
-    var p = target ? Math.max(0, Math.min(100, (newWon / target) * 100)) : 0;
+    var p = target ? Math.max(0, Math.min(100, (newWonAmt / target) * 100)) : 0;
     bar.style.setProperty("--pct", p.toFixed(1) + "%");
     bar.setAttribute("aria-valuenow", Math.round(p));
-    bar.querySelector(".bar-marker").textContent = lakh(newWon);
+    bar.querySelector(".bar-marker").textContent = lakh(newWonAmt);
 
-    // 3. Region wise revenue (won business)
-    var byRegion = groupSum(rows, function(r) { return r.account.region; }, function(b, r) {
-        if (r.wonHere) { b.amount += r.amount; b.accounts[r.account.id] = 1; }
-        if (r.baseHere && r.kind === "Renewal") b.base += r.amount;
-        if (r.wonHere && r.kind === "Renewal") b.extra += r.amount;
-        if (r.lostHere && r.kind === "Renewal") b.lost += r.amount;
+    /* ---- regions: only those with a deal this FY ---- */
+    var regionsPresent = [];
+    rows.forEach(function(r) { if (regionsPresent.indexOf(r.account.region) === -1) regionsPresent.push(r.account.region); });
+
+    function of(region, test) { return rows.filter(function(r) { return r.account.region === region && test(r); }); }
+    function accountsIn(list) {
+        var seen = {};
+        list.forEach(function(r) { seen[r.account.id] = 1; });
+        return Object.keys(seen).length;
+    }
+
+    regionsPresent.sort(function(a, b) {
+        return sumOf(of(b, function(r) { return r.wonHere; })) - sumOf(of(a, function(r) { return r.wonHere; }));
     });
-    var regionKeys = Object.keys(byRegion).sort();
-    fillTable("regionRevenue", regionKeys.map(function(k) {
-        return [k, String(Object.keys(byRegion[k].accounts).length), lakh(byRegion[k].amount)];
-    }), [String(regionKeys.reduce(function(s, k) { return s + Object.keys(byRegion[k].accounts).length; }, 0)),
-         lakh(regionKeys.reduce(function(s, k) { return s + byRegion[k].amount; }, 0))]);
 
-    // 4 + 8. Channel partner
-    var byPartner = groupSum(rows, function(r) { return r.account.partner; }, function(b, r) {
-        if (r.wonHere) { b.amount += r.amount; b.accounts[r.account.id] = 1; if (r.kind === "Renewal") b.extra += r.amount; else b.base += r.amount; }
-        if (r.paidHere) b.paid += r.payment;
-        if (r.pendingHere) b.pending += r.amount;
+    var regionRows = regionsPresent.map(function(region) {
+        var won = of(region, function(r) { return r.wonHere; });
+        var inRegion = (live.accountsByRegion[region] || []).length;
+        return [escapeHtml(region) + ' <span class="count-note">(' + inRegion + ")</span>",
+                drill(String(accountsIn(won)), region + " - accounts with won business, " + period, won),
+                drill(lakh(sumOf(won)), region + " - won business, " + period, won)];
     });
-    var pKeys = Object.keys(byPartner).sort();
-    fillTable("channelPartner", pKeys.map(function(k) {
-        return [k, lakh(byPartner[k].amount), String(Object.keys(byPartner[k].accounts).length)];
-    }), [lakh(pKeys.reduce(function(s, k) { return s + byPartner[k].amount; }, 0)),
-         String(pKeys.reduce(function(s, k) { return s + Object.keys(byPartner[k].accounts).length; }, 0))]);
+    var allWon = rows.filter(function(r) { return r.wonHere; });
+    fillTable("regionRevenue", regionRows,
+        [drill(String(accountsIn(allWon)), "All regions - accounts with won business, " + period, allWon),
+         drill(lakh(sumOf(allWon)), "All regions - won business, " + period, allWon)]);
 
-    fillTable("partnerSummary", pKeys.map(function(k) {
-        var b = byPartner[k];
-        return [k, lakh(b.base), lakh(b.extra), lakh(b.paid), lakh(b.pending)];
-    }), ["base", "extra", "paid", "pending"].map(function(f) {
-        return lakh(pKeys.reduce(function(s, k) { return s + byPartner[k][f]; }, 0));
-    }));
+    /* ---- channel partners ---- */
+    var partnersPresent = [];
+    rows.forEach(function(r) { if (partnersPresent.indexOf(r.account.partner) === -1) partnersPresent.push(r.account.partner); });
+    function byPartner(partner, test) { return rows.filter(function(r) { return r.account.partner === partner && test(r); }); }
+    partnersPresent.sort(function(a, b) {
+        return sumOf(byPartner(b, function(r) { return r.wonHere; })) - sumOf(byPartner(a, function(r) { return r.wonHere; }));
+    });
 
-    // 5. Renewal summary by quarter
+    fillTable("channelPartner", partnersPresent.map(function(partner) {
+        var won = byPartner(partner, function(r) { return r.wonHere; });
+        var total = (live.accountsByPartner[partner] || []).length;
+        return [escapeHtml(partner) + ' <span class="count-note">(' + total + ")</span>",
+                drill(lakh(sumOf(won)), partner + " - won business, " + period, won),
+                drill(String(accountsIn(won)), partner + " - accounts with won business, " + period, won)];
+    }), [drill(lakh(sumOf(allWon)), "All partners - won business, " + period, allWon),
+         drill(String(accountsIn(allWon)), "All partners - accounts, " + period, allWon)]);
+
+    fillTable("partnerSummary", partnersPresent.map(function(partner) {
+        var pNew = byPartner(partner, function(r) { return r.wonHere && r.kind !== "Renewal"; });
+        var pRen = byPartner(partner, function(r) { return r.wonHere && r.kind === "Renewal"; });
+        var pPaid = byPartner(partner, function(r) { return r.paidHere; });
+        var pPend = byPartner(partner, function(r) { return r.pendingHere; });
+        return [escapeHtml(partner),
+                drill(lakh(sumOf(pNew)), partner + " - new won, " + period, pNew),
+                drill(lakh(sumOf(pRen)), partner + " - renewal won, " + period, pRen),
+                drill(lakh(sumOf(pPaid, "payment")), partner + " - payment received, " + period, withAmount(pPaid, "payment")),
+                drill(lakh(sumOf(pPend)), partner + " - payment pending, " + period, pPend)];
+    }), [drill(lakh(newWonAmt), "New won - " + period, newWon),
+         drill(lakh(renewalWonAmt), "Renewal won - " + period, renewalWon),
+         drill(lakh(paidAmt), "Payment received - " + period, withAmount(paid, "payment")),
+         drill(lakh(pendingAmt), "Payment pending - " + period, pendingRows)]);
+
+    /* ---- renewal by quarter ---- */
     var quarters = quarter === ALL_QUARTERS ? QUARTERS : [quarter];
-    var qRows = quarters.map(function(q) {
-        var base = 0, won = 0, lost = 0;
-        rows.forEach(function(r) {
-            if (r.kind !== "Renewal") return;
-            if (r.q.expected === q) base += r.amount;
-            if (isWon(r.stage) && !r.excluded && r.q.actual === q) won += r.amount;
-            if (isLost(r.stage) && r.q.closing === q) lost += r.amount;
-        });
-        return [q, lakh(base), lakh(won), lakh(lost)];
+    var qData = quarters.map(function(q) {
+        var base = rows.filter(function(r) { return r.kind === "Renewal" && r.q.expected === q; });
+        var won = rows.filter(function(r) { return r.kind === "Renewal" && isWon(r.stage) && !r.excluded && r.q.actual === q; });
+        var lost = rows.filter(function(r) { return r.kind === "Renewal" && isLost(r.stage) && r.q.closing === q; });
+        return { q: q, base: base, won: won, lost: lost };
     });
-    fillTable("renewalQuarter", qRows, ["base", "achieved", "lost"].map(function(_, i) {
-        return lakh(qRows.reduce(function(s, r) { return s + parseFloat(r[i + 1]); }, 0));
+
+    fillTable("renewalQuarter", qData.map(function(d) {
+        return [d.q + ' <span class="count-note">(' + QUARTER_RANGE[d.q] + ")</span>",
+                drill(lakh(sumOf(d.base)), d.q + " - renewal base", d.base),
+                drill(lakh(sumOf(d.won)), d.q + " - renewal won", d.won),
+                drill(lakh(sumOf(d.lost)), d.q + " - renewal lost", d.lost)];
+    }), ["base", "won", "lost"].map(function(field) {
+        var all = [];
+        qData.forEach(function(d) { all = all.concat(d[field]); });
+        return drill(lakh(sumOf(all)), "Renewal " + field + " - " + period, all);
     }));
 
-    // 6. Region wise renewal summary
-    fillTable("renewalRegion", regionKeys.map(function(k) {
-        var b = byRegion[k];
-        return [k, lakh(b.base), lakh(b.extra), lakh(b.lost)];
-    }), ["base", "extra", "lost"].map(function(f) {
-        return lakh(regionKeys.reduce(function(s, k) { return s + byRegion[k][f]; }, 0));
+    /* ---- renewal by region ---- */
+    fillTable("renewalRegion", regionsPresent.map(function(region) {
+        var base = of(region, function(r) { return r.kind === "Renewal" && r.baseHere; });
+        var won = of(region, function(r) { return r.kind === "Renewal" && r.wonHere; });
+        var lost = of(region, function(r) { return r.kind === "Renewal" && r.lostHere; });
+        return [escapeHtml(region),
+                drill(lakh(sumOf(base)), region + " - renewal base, " + period, base),
+                drill(lakh(sumOf(won)), region + " - renewal won, " + period, won),
+                drill(lakh(sumOf(lost)), region + " - renewal lost, " + period, lost)];
+    }), [["baseHere", "base"], ["wonHere", "won"], ["lostHere", "lost"]].map(function(pair) {
+        var list = rows.filter(function(r) { return r.kind === "Renewal" && r[pair[0]]; });
+        return drill(lakh(sumOf(list)), "Renewal " + pair[1] + " - " + period, list);
     }));
 
-    // 7. Product wise summary
-    var byProduct = groupSum(rows, function(r) { return r.product; }, function(b, r) {
-        if (r.wonHere && r.kind !== "Renewal") { b.base += r.amount; b.accounts[r.account.id] = 1; }
-        if (r.wonHere && r.kind === "Renewal") b.extra += r.amount;
+    /* ---- products ---- */
+    var productsPresent = [];
+    rows.forEach(function(r) { if (productsPresent.indexOf(r.product) === -1) productsPresent.push(r.product); });
+    function byProduct(product, test) { return rows.filter(function(r) { return r.product === product && test(r); }); }
+    productsPresent.sort(function(a, b) {
+        return sumOf(byProduct(b, function(r) { return r.wonHere; })) - sumOf(byProduct(a, function(r) { return r.wonHere; }));
     });
-    var prodKeys = Object.keys(byProduct).sort();
-    fillTable("product", prodKeys.map(function(k) {
-        var b = byProduct[k];
-        return [k, String(Object.keys(b.accounts).length), lakh(b.base), lakh(b.extra)];
-    }), [String(prodKeys.reduce(function(s, k) { return s + Object.keys(byProduct[k].accounts).length; }, 0)),
-         lakh(prodKeys.reduce(function(s, k) { return s + byProduct[k].base; }, 0)),
-         lakh(prodKeys.reduce(function(s, k) { return s + byProduct[k].extra; }, 0))]);
+
+    fillTable("product", productsPresent.map(function(product) {
+        var pNew = byProduct(product, function(r) { return r.wonHere && r.kind !== "Renewal"; });
+        var pRen = byProduct(product, function(r) { return r.wonHere && r.kind === "Renewal"; });
+        return [escapeHtml(product),
+                drill(String(accountsIn(pNew)), product + " - new accounts, " + period, pNew),
+                drill(lakh(sumOf(pNew)), product + " - new business, " + period, pNew),
+                drill(lakh(sumOf(pRen)), product + " - renewal business, " + period, pRen)];
+    }), [drill(String(accountsIn(newWon)), "New accounts - " + period, newWon),
+         drill(lakh(newWonAmt), "New business - " + period, newWon),
+         drill(lakh(renewalWonAmt), "Renewal business - " + period, renewalWon)]);
 
     var f = fieldInfo;
     document.getElementById("footnote").innerHTML =
         live.accountCount + " international accounts of " + live.totalAccounts + " (Billing Region = " +
-        escapeHtml(INTERNATIONAL_REGION_VALUES.join(" / ")) + "), " + rows.length + " deals in " + FY_LABEL +
-        ". Amounts are USD x " + USD_TO_INR + " shown in lakh. New business = Closed Won, Deal Type New, Actual Order Date in the period; " +
-        "renewal base = Expected Order Date in the period. Fields: region = " + escapeHtml(f.region.api) +
-        ", partner = " + escapeHtml(f.partner.api) + ", product = " + escapeHtml(f.product.api) +
-        ", amount = " + escapeHtml(f.amount.api) + " (" + amountUnit + "), deal type = " + escapeHtml(f.dealType.api) +
-        ". " + WIDGET_VERSION;
+        escapeHtml(INTERNATIONAL_REGION_VALUES.join(" / ")) + "); " + rows.length + " deals in " + period +
+        ". The number in brackets after a region or partner is how many international accounts it has in total. " +
+        "Amounts are USD x " + USD_TO_INR + " shown in lakh; click any figure to see the accounts behind it. " +
+        "New business = Closed Won, Deal Type New, Actual Order Date in the period; renewal base = Expected Order Date in the period. " +
+        "Fields: region = " + escapeHtml(f.region.api) + ", partner = " + escapeHtml(f.partner.api) +
+        ", product = " + escapeHtml(f.product.api) + ", amount = " + escapeHtml(f.amount.api) + " (" + amountUnit +
+        "), deal type = " + escapeHtml(f.dealType.api) + ". " + WIDGET_VERSION;
 }
 
 </script>
