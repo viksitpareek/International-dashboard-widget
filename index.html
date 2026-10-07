@@ -60,7 +60,8 @@ select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); o
 .hero-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .big { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .hero-figures { display: flex; gap: 36px; flex-wrap: wrap; margin: 6px 0 26px; }
-.hero-figures span { display: block; color: var(--muted); font-size: 12px; }
+.hero-figures > div > span { display: block; color: var(--muted); font-size: 12px; }
+.hero-figures .big .drill, .hero-figures .big span { font-size: inherit; font-weight: inherit; color: inherit; display: inline; }
 .bar { position: relative; height: 16px; background: var(--track); border-radius: 8px; margin: 26px 0 8px; }
 .bar-fill { position: absolute; inset: 0 auto 0 0; width: var(--pct, 0%); background: var(--accent); border-radius: 8px; min-width: 0; }
 .bar-marker { position: absolute; left: var(--pct, 0%); top: -22px; transform: translateX(-50%); font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--accent); }
@@ -339,7 +340,7 @@ tbody tr.hidden-row { display: none; }
    CONFIGURATION
    ========================================================= */
 
-var WIDGET_VERSION = "intl v3 - new layout, light mode, every figure clickable";
+var WIDGET_VERSION = "intl v3.1 - hero figure sizes fixed";
 
 var FY_START_YEAR = 2026;
 var FY_FILTER = FY_START_YEAR + "-" + (FY_START_YEAR + 1);     // Deal Year (Year2)
