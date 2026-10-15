@@ -87,6 +87,7 @@ td.empty { color: var(--muted); }
 .lostc { color: var(--lost); }
 .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; }
 .hint { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+.muted { color: var(--muted); font-weight: 400; }
 
 /* multi-select filters */
 .multi { position: relative; }
@@ -340,14 +341,24 @@ tbody tr.hidden-row { display: none; }
    CONFIGURATION
    ========================================================= */
 
-var WIDGET_VERSION = "intl v3.1 - hero figure sizes fixed";
+var WIDGET_VERSION = "intl v3.2 - USD converted only when the account Currency is USD";
 
 var FY_START_YEAR = 2026;
 var FY_FILTER = FY_START_YEAR + "-" + (FY_START_YEAR + 1);     // Deal Year (Year2)
 
 /* Accounts whose Billing Region is one of these are the international book */
 var INTERNATIONAL_REGION_VALUES = ["international"];
-var USD_TO_INR = 95;                 // international amounts are held in USD
+var USD_TO_INR = 95;                 // the rate used when an account is billed in USD
+
+/*
+ * The account's Currency field decides the conversion, not the region: an international
+ * account billed in INR already holds rupees and is left alone; only USD is multiplied
+ * by USD_TO_INR. An account with no currency value is treated as USD, which is how this
+ * dashboard behaved before the field existed.
+ */
+var USD_CURRENCY_VALUES = ["usd", "us dollar", "us dollars", "$", "usd - us dollar", "dollar"];
+var INR_CURRENCY_VALUES = ["inr", "indian rupee", "indian rupees", "rs", "rs.", "\u20b9", "inr - indian rupee", "rupee"];
+var CURRENCY_WHEN_BLANK_IS_USD = true;
 
 /* New business targets, in lakh */
 var NEW_TARGET = { fy: 250, q: { Q1: 15, Q2: 50, Q3: 80, Q4: 105 } };
@@ -373,6 +384,7 @@ var FIELDS = {
     dealType: "",          // Deals: Type
     product: "",           // Deals: Product
     billingRegion: "",     // Accounts: Billing Region
+    currency: "",          // Accounts: Currency
     region: "",            // Accounts: the GCC / LA / SEA field
     partner: ""            // Accounts: Channel Partner
 };
@@ -604,6 +616,25 @@ function pick(explicit, opts, patterns, records, scorer, fallback) {
     return { api: fallback, label: fallback, found: false };
 }
 
+/* true = USD, false = INR or any other stated currency, null = nothing stated */
+/* "(USD x 95)" / "(INR, not converted)" after an account name */
+function currencyTag(account) {
+    if (!account) return "";
+    return ' <span class="muted">(' + (account.usd ? "USD \u00d7 " + USD_TO_INR : "INR, not converted") + ')</span>';
+}
+
+
+function currencyIsUsd(value) {
+    var text = String(value || "").trim().toLowerCase();
+    if (!text) return null;
+    if (USD_CURRENCY_VALUES.indexOf(text) !== -1) return true;
+    if (INR_CURRENCY_VALUES.indexOf(text) !== -1) return false;
+    if (/\busd\b|\bus ?dollar/.test(text)) return true;
+    if (/\binr\b|rupee/.test(text)) return false;
+    return false;
+}
+
+
 function filled(api, records) { var n = 0; records.forEach(function(r) { if (valueList(r[api]).length) n++; }); return n; }
 function nonZero(api, records) { var n = 0; records.forEach(function(r) { if (num(r[api]) !== 0) n++; }); return n; }
 
@@ -623,6 +654,7 @@ function build(dealMeta, accMeta, deals, accounts) {
         dealType: pick(FIELDS.dealType, dOpts, [/deal ?type/, /^type$/, /\btype\b/], deals, filled, "Type"),
         product: pick(FIELDS.product, dOpts, [/\bproducts?\b/], deals, filled, "Product"),
         billingRegion: pick(FIELDS.billingRegion, aOpts, [/billing region/, /\bregion\b/], accounts, filled, "Billing_Region"),
+        currency: pick(FIELDS.currency, aOpts, [/^currency$/, /\bcurrency\b/], accounts, filled, "Currency"),
         partner: pick(FIELDS.partner, aOpts, [/channel partner/, /\bpartner\b/], accounts, filled, "Channel_Partner")
     };
 
@@ -648,6 +680,7 @@ function build(dealMeta, accMeta, deals, accounts) {
     paymentUnit = unitFor(fieldInfo.paymentAmount.api, deals);
 
     var accountsById = {}, regions = {}, partners = {}, accountsByRegion = {}, accountsByPartner = {};
+    var usdAccounts = 0, inrAccounts = 0;
     intlAccounts.forEach(function(a) {
         var region = valueText(a[fieldInfo.region.api]) || "(no region)";
         var partnerRaw = valueText(a[fieldInfo.partner.api]);
@@ -656,10 +689,16 @@ function build(dealMeta, accMeta, deals, accounts) {
         var partner = !partnerRaw ? DIRECT_LABEL
             : (PARTNER_PREFIX_TO_DROP.indexOf(partnerPrefix) !== -1 ? DIRECT_LABEL
                : (partnerParts ? partnerParts[2].trim() : partnerRaw));
+        var currency = valueText(a[fieldInfo.currency.api]);
+        var isUsd = currencyIsUsd(currency);
+        if (isUsd === null) isUsd = CURRENCY_WHEN_BLANK_IS_USD;
+        if (isUsd) usdAccounts++; else inrAccounts++;
+
         accountsById[String(a.id)] = {
             id: String(a.id), name: a.Account_Name || "(Unnamed Account)",
             region: region, partner: partner, partnerRegion: partnerParts ? partnerParts[1].toUpperCase() : "",
             partnerRaw: partnerRaw || "",
+            currency: currency, usd: isUsd,
             owner: lookupName(a.Owner, "Unassigned")
         };
         if (region !== "(no region)") regions[region] = 1;
@@ -674,6 +713,7 @@ function build(dealMeta, accMeta, deals, accounts) {
         deals: deals, accountsById: accountsById,
         accountsByRegion: accountsByRegion, accountsByPartner: accountsByPartner,
         accountCount: intlAccounts.length, totalAccounts: accounts.length,
+        usdAccounts: usdAccounts, inrAccounts: inrAccounts,
         regionValues: Object.keys(regions).sort(sortFn),
         partnerValues: Object.keys(partners).sort(sortFn)
     };
@@ -729,16 +769,17 @@ function fiscalYear(deal) {
     return d.getMonth() >= 3 ? y + "-" + (y + 1) : (y - 1) + "-" + y;
 }
 
+/* Only an account billed in USD is converted; one billed in INR is already in rupees */
 function amountLakh(deal, account) {
     var raw = num(deal[fieldInfo.amount.api]);
     var lakh = amountUnit === "lakh" ? raw : raw / 100000;
-    return lakh * (account ? USD_TO_INR : 1);
+    return lakh * (account && account.usd ? USD_TO_INR : 1);
 }
 
 function paymentLakh(deal, account) {
     var raw = num(deal[fieldInfo.paymentAmount.api]);
     var lakh = paymentUnit === "lakh" ? raw : raw / 100000;
-    return lakh * (account ? USD_TO_INR : 1);
+    return lakh * (account && account.usd ? USD_TO_INR : 1);
 }
 
 function dealKind(deal) {
@@ -857,7 +898,7 @@ function openDrill(id) {
                 return (y.drillAmount !== undefined ? y.drillAmount : y.amount) - (x.drillAmount !== undefined ? x.drillAmount : x.amount);
             });
             a.deals.forEach(function(r, i) {
-                html += '<tr><th scope="row">' + escapeHtml(i === 0 ? a.account.name : "") + "</th>" +
+                html += '<tr><th scope="row">' + (i === 0 ? escapeHtml(a.account.name) + currencyTag(a.account) : "") + "</th>" +
                     "<td>" + escapeHtml(i === 0 ? a.account.region : "") + "</td>" +
                     "<td>" + escapeHtml(i === 0 ? a.account.partner : "") + "</td>" +
                     "<td>" + escapeHtml(r.name) + "</td><td>" + escapeHtml(r.kind) + "</td>" +
@@ -1159,10 +1200,14 @@ function render() {
         live.accountCount + " international accounts of " + live.totalAccounts + " (Billing Region = " +
         escapeHtml(INTERNATIONAL_REGION_VALUES.join(" / ")) + "); " + rows.length + " deals in " + period +
         ". Click any figure to see the accounts behind it. Numbers in brackets are the accounts that region or partner has in total. " +
-        "Amounts are USD x " + USD_TO_INR + " shown in lakh. Partner names drop the region prefix, and " +
+        "Amounts are shown in lakh: an account whose Currency is USD is converted at " + USD_TO_INR +
+        " per USD, one billed in INR is counted as rupees as it stands (" + live.usdAccounts + " USD, " +
+        live.inrAccounts + " INR" + (fieldInfo.currency.found ? "" : " - no Currency field found, so all are read as USD") +
+        "). Partner names drop the region prefix, and " +
         escapeHtml(PARTNER_PREFIX_TO_DROP.join(" / ")) + " partners are shown as " + DIRECT_LABEL + ". " +
         "New business = Closed Won, Deal Type New, Actual Order Date in the period; renewal base = Expected Order Date in the period. " +
         "Fields: region = " + escapeHtml(f.region.api) + ", partner = " + escapeHtml(f.partner.api) +
+        ", currency = " + escapeHtml(f.currency.api) +
         ", product = " + escapeHtml(f.product.api) + ", amount = " + escapeHtml(f.amount.api) + " (" + amountUnit +
         "), deal type = " + escapeHtml(f.dealType.api) + ". " + WIDGET_VERSION;
 }
